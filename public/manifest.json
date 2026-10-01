@@ -1,0 +1,24 @@
+{
+  "name": "TGPCET Garba Night – Gate Pass & Entry System",
+  "short_name": "TGPCET Garba",
+  "description": "Digital Gate Pass and QR Entry Management System for TGPCET Garba Night",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0717",
+  "theme_color": "#0b0717",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/payqr.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/payqr.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

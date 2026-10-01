@@ -1,0 +1,104 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions for Role-Based Access Control (RBAC)
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isSuperAdmin() {
+      return isAuthenticated() && 
+        request.auth.token.email.lower() == 'bhushanmallick2006@gmail.com';
+    }
+
+    function getCoordinatorData() {
+      return get(/databases/$(database)/documents/coordinators/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isSuperAdmin() || (
+        isAuthenticated() && 
+        exists(/databases/$(database)/documents/coordinators/$(request.auth.uid)) &&
+        (getCoordinatorData().role == 'admin' || getCoordinatorData().role == 'super_admin') &&
+        getCoordinatorData().isActive == true
+      );
+    }
+
+    function isGateCoordinator() {
+      return isAdmin() || (
+        isAuthenticated() && 
+        exists(/databases/$(database)/documents/coordinators/$(request.auth.uid)) &&
+        getCoordinatorData().role == 'gate_coordinator' &&
+        getCoordinatorData().isActive == true
+      );
+    }
+
+    function isPaymentCoordinator() {
+      return isAdmin() || (
+        isAuthenticated() && 
+        exists(/databases/$(database)/documents/coordinators/$(request.auth.uid)) &&
+        getCoordinatorData().role == 'payment_coordinator' &&
+        getCoordinatorData().isActive == true
+      );
+    }
+
+    // Event Settings: Public can read, only Admin can write
+    match /eventSettings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Coordinators Registry: Only Admin/Super Admin can manage
+    match /coordinators/{coordinatorId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Participants:
+    // - Public can read single participant by querying matching Pass ID
+    // - Public can create new registration with pending status
+    // - Gate coordinators can update ONLY check-in/attendance fields
+    // - Payment coordinators/Admin can update payment/pass status
+    match /participants/{participantId} {
+      allow read: if true;
+      allow create: if request.resource.data.paymentStatus == 'pending' &&
+                      request.resource.data.passStatus == 'pending_verification' &&
+                      request.resource.data.checkedIn == false;
+      
+      // Update by Gate Coordinator (only check-in/checkout fields)
+      allow update: if isGateCoordinator() && 
+                      request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['checkedIn', 'entryStatus', 'checkInTimestamp', 'checkedInBy', 'checkOutTimestamp', 'checkedOutBy', 'gateId']);
+      
+      // Update by Payment Coordinator (only paymentStatus, passStatus)
+      allow update: if isPaymentCoordinator() && 
+                      request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['paymentStatus', 'passStatus']);
+                        
+      // Full admin update/delete
+      allow update, delete: if isAdmin();
+    }
+
+    // Payments:
+    // - Public can create payment with status == 'pending'
+    // - Payment Coordinators & Admin can read all payments and update status/verifiedBy
+    // - Gate Coordinators cannot modify payments
+    match /payments/{paymentId} {
+      allow read: if isPaymentCoordinator() || isAdmin();
+      allow create: if request.resource.data.status == 'pending';
+      allow update: if isPaymentCoordinator() || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Immutable Audit Logs:
+    // - Authenticated staff can append new audit records
+    // - Admin can read all logs
+    // - No updates or deletions allowed to preserve audit integrity
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update, delete: if false;
+    }
+  }
+}
